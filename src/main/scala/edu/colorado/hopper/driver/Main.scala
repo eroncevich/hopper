@@ -12,8 +12,10 @@ object Main {
   
   val REGRESSION = "__regression"
     
-  def main(args: Array[String]) : Unit = {     
-    val target = Options.parseArgs(args)          
+  def main(args: Array[String]) : Unit = {
+    val newArgs = Array("-check_android_derefs", "-app", args(0))    
+    //args.foreach{println}
+    val target = Options.parseArgs(newArgs)          
     
     if (target == null) println("No analysis targets given...exiting.")
     else if (target.equals(REGRESSION)) {
@@ -51,7 +53,9 @@ object Main {
       }
     } else {
       val client : Client[_] =
-        if (Options.CHECK_CASTS) {
+        if(true){
+          new AndroidSlicingClient(Options.APP, new File(Options.ANDROID_JAR))
+        }else if (Options.CHECK_CASTS) {
           Options.PRINT_REFS = false
           Options.EXIT_ON_FAIL = false
           new DowncastCheckingClient(Options.APP, Util.strToOption(Options.LIB), Options.MAIN_CLASS, Options.MAIN_METHOD)
