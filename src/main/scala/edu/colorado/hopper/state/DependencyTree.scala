@@ -1,5 +1,8 @@
 package edu.colorado.hopper.state
-case class NRid(){
+
+import com.ibm.wala.classLoader.IMethod
+
+case class NRid(meth: IMethod){
     
 }
 
@@ -7,14 +10,17 @@ abstract class NonReducibleVal (){
     
 }
 case class FrameworkFun(name:String, id:NRid) extends NonReducibleVal{ //need parameter for location in code
+    override def toString = name
 }
 case class NonFrameworkFun(name:String,id:NRid) extends NonReducibleVal{ //need parameter for location in code
+    override def toString = name
 }
 
 case class PrimitiveVal(c:AnyVal,id:NRid) extends NonReducibleVal{ //Includes all numbers/bools/chars/etc
-    
+    override def toString = c.toString
 }
 case class Variable(id:NRid) extends NonReducibleVal{ //contains the id of the variable
+    override def toString = id.toString
 }
 case class Empty() extends NonReducibleVal{ //An empty Dependency
 }
@@ -66,7 +72,12 @@ case class DependencyTree(depTable:collection.mutable.HashMap[NonReducibleVal,Li
             case _ => a
             }}
     }
-    //def clone() = {
-        //return DependencyTree(depTable)
-    //}
+    override def clone(): DependencyTree = {
+        return new DependencyTree(depTable.clone())
+    }
+    override def equals(o: Any): Boolean = o match {
+        case DependencyTree(dt) => depTable == dt
+        case _ => false
+    }
+
 }

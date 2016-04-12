@@ -15,6 +15,7 @@ import edu.colorado.walautil.Types.MSet
 import edu.colorado.walautil.{CFGUtil, IRUtil, Util}
 
 import scala.collection.JavaConversions._
+import scala.collection.mutable
 
 object Qry {
   private def DEBUG = Options.DEBUG
@@ -39,10 +40,12 @@ object Qry {
            startBeforeI : Boolean = false) : Qry =
     make(startEdges, i, n, hm, new Z3Solver, startBeforeI)
 
+  /** default make, never used and doesn't contribute to depConstraints for i*/
   def make(startEdges : Iterable[PtEdge], n : CGNode,  hm : HeapModel) : Qry = {
     val (localConstraints, heapConstraints) = makeLocalAndHeapConstraints(startEdges, n, hm)
+    //val depConstraints = makeDepConstraints(startEdges,n,hm)
     val callStack = makeCallStack(n, localConstraints, n.getIR().getControlFlowGraph().entry(), -1)
-    new Qry(heapConstraints, Util.makeSet[PureConstraint], callStack, new Z3Solver)
+    new Qry(heapConstraints, Util.makeSet[PureConstraint], null, callStack, new Z3Solver)
   }
   
   /** @param startBeforeI - if false, @param i will be the first instruction processed; otherwise, @param i will not be
@@ -51,11 +54,12 @@ object Qry {
            startBeforeI : Boolean) : Qry = {
     val (startBlk, startLine) = getStartLoc(i, n)
     val (localConstraints, heapConstraints) = makeLocalAndHeapConstraints(startEdges, n, hm)
+    val depConstraints = makeDepConstraints(startEdges,n,i)
     if (DEBUG)
       localConstraints.foldLeft (Set.empty[StackVar]) ((s, e) =>
         { assert(!s.contains(e.src), s"${e.src} appears as LHS more than once in $localConstraints"); s + e.src })
     val callStack = makeCallStack(n, localConstraints, startBlk, if (startBeforeI) startLine - 1 else startLine)
-    new Qry(heapConstraints, Util.makeSet[PureConstraint], callStack, solver)
+    new Qry(heapConstraints, Util.makeSet[PureConstraint], depConstraints, callStack, solver)
   } 
   
   private def makeCallStack(n : CGNode, localConstraints : MSet[LocalPtEdge], startBlk : ISSABasicBlock,
@@ -90,10 +94,16 @@ object Qry {
     val heapConstraints = Util.makeSet[HeapPtEdge]
     startEdges.foreach(e => e match {
       case e : LocalPtEdge => localConstraints += e        
-      case e : HeapPtEdge => heapConstraints += e      
+      case e : HeapPtEdge => heapConstraints += e
     })
     localConstraints ++= getContextualConstraints(n, localConstraints, hm)
     (localConstraints, heapConstraints)
+  }
+  private def makeDepConstraints(startEdges : Iterable[PtEdge], n:CGNode, i: SSAInstruction):DependencyTree = {
+    println(startEdges)
+    println(n)
+    println(i)
+    new DependencyTree(mutable.HashMap():collection.mutable.HashMap[NonReducibleVal,List[NonReducibleVal]])
   }
   
   def getPT[K,V](v : K, constraints : Iterable[PtEdge]) : Set[V] = 
@@ -137,8 +147,15 @@ object Qry {
 }
 
 /** mutable query holding all analysis state. program loc information (including current method and current line number) is stored in the callStack field */
-class Qry(val heapConstraints : MSet[HeapPtEdge], val pureConstraints : MSet[PureConstraint], val callStack : CallStack, private val solver : Solver[_],
-          val parents : List[Int] = List.empty[Int], val id : Int = getFreshQryId) extends Concretizable {
+class Qry(val heapConstraints : MSet[HeapPtEdge],
+          val pureConstraints : MSet[PureConstraint],
+          val depConstraints : DependencyTree,
+
+          val callStack : CallStack,
+          private val solver : Solver[_],
+          val parents : List[Int] = List.empty[Int],
+          val id : Int = getFreshQryId
+         ) extends Concretizable {
         
   private val assumes = (id :: parents).map(i => i.toString)
   def localConstraints : MSet[LocalPtEdge] = callStack.top.localConstraints
@@ -207,7 +224,10 @@ class Qry(val heapConstraints : MSet[HeapPtEdge], val pureConstraints : MSet[Pur
     require(heapConstraints.contains(e), "Qry does not have heap constraint " + e + " " + this)
     heapConstraints -= e
   }
-  
+  def addDepConstraint(v1: NonReducibleVal, v2: NonReducibleVal): Unit ={
+    depConstraints.addEdge(v1,v2)
+  }
+
   def removeConstraint(e : PtEdge) = e match {
     case e : HeapPtEdge => removeHeapConstraint(e)
     case e : LocalPtEdge => removeLocalConstraint(e)
@@ -560,17 +580,18 @@ class Qry(val heapConstraints : MSet[HeapPtEdge], val pureConstraints : MSet[Pur
 
   override def qry = this
   
-  override def toString : String = id + "Q { " + constraintsToString(localConstraints, " *\n") + " *\n" + constraintsToString(heapConstraints, " *\n") + 
-    " }\n{( " + constraintsToString(pureConstraints, " ^\n") + " )}"
+  override def toString : String = id + "Q { L:" + constraintsToString(localConstraints, " *\n") + " *\nH:" + constraintsToString(heapConstraints, " *\n") +
+    " *\nD:" + depConstraints.toString + " }\n{( P:" + constraintsToString(pureConstraints, " ^\n") + " )}"
       
-  override def clone : Qry = new Qry(heapConstraints.clone, pureConstraints.clone, callStack.clone, solver, id :: parents)
+  override def clone : Qry = new Qry(heapConstraints.clone, pureConstraints.clone, depConstraints.clone, callStack.clone, solver, id :: parents)
 
   override def hashCode : Int = Util.makeHash(List(heapConstraints, pureConstraints, callStack))
   
   override def equals(other : Any) : Boolean = other match {
     case q : Qry => this.heapConstraints == q.heapConstraints  &&
                     this.pureConstraints == q.pureConstraints && // TODO: ask Z3 about these?                  
-                    this.callStack == q.callStack // TODO: is this too restrictive?
+                    this.callStack == q.callStack && // TODO: is this too restrictive?
+                    this.depConstraints == q.depConstraints
     case _ => false
   }
 

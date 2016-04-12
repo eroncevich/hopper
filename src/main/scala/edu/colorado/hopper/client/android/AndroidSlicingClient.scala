@@ -7,7 +7,7 @@ import edu.colorado.walautil.Timer
 import edu.colorado.hopper.state._
 
 import edu.colorado.hopper.executor.{DefaultSymbolicExecutor, TransferFunctions}
-import edu.colorado.hopper.client.android.DroidelClient
+//import edu.colorado.hopper.client.android.DroidelClient
 
 //others
 import edu.colorado.walautil._
@@ -62,18 +62,16 @@ class AndroidSlicingClient(appPath: String, androidLib: File, useJPhantom: Boole
         if (shouldCheck(n)) n.getIR match { // don't analyze library code
           case null =>l
           case ir => // for each instruction in the IR for the call graph node
-            //println(s"$n");
             println(ClassUtil.pretty(n.getMethod()))
             val tbl = ir.getSymbolTable
             
             ir.getInstructions.zipWithIndex.foldLeft(l)((l, pair) => {
               val (i, index) = pair
-              //println(s"Ugh... $i")
               i match {
-                case i: SSAInvokeInstruction =>                   
-                  //println(s"SSAInvoke: ${i.getCallSite.getDeclaredTarget}");
+                case i: SSAInvokeInstruction =>
                   //SSAInvoke: < Application, Lcom/plv/evan/sensitiveunit1/unit, sensitiveMethod()V >
                   if(i.getCallSite.getDeclaredTarget.toString == "< Application, Lcom/plv/evan/sensitiveunit1/unit, sensitiveMethod()V >"){
+                    
                       println(s"Found ${i.getCallSite.getDeclaredTarget}");
                       val srcLine = IRUtil.getSourceLine(i, ir)
                       print("Checking invoke instruction "); ClassUtil.pp_instr (i, ir); println(s" at line $srcLine")
