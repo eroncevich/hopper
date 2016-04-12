@@ -240,7 +240,7 @@ class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[St
     // TODO: extract a relevance relation that doesn't need a Qry as input so we don't need this
     val heapConstraints = Util.makeSet[HeapPtEdge]
     heapConstraints += witnessMe.asInstanceOf[HeapPtEdge]
-    val emptyQry = new Qry(heapConstraints, Util.makeSet[PureConstraint], new CallStack, new Z3Solver)
+    val emptyQry = new Qry(heapConstraints, Util.makeSet[PureConstraint],null, new CallStack, new Z3Solver)
     val path = new Path(emptyQry)
     var instrNum = 1
     val producers = relRelation.getProducers(witnessMe, emptyQry)
