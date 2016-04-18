@@ -18,6 +18,7 @@ import edu.colorado.walautil.Types.WalaBlock
 import edu.colorado.walautil._
 
 import scala.collection.JavaConversions.{asScalaBuffer, asScalaIterator, asScalaSet, collectionAsScalaIterable, mapAsJavaMap}
+import scala.io.Source
 
 object UnstructuredSymbolicExecutor {
   protected[executor] def DEBUG = Options.DEBUG
@@ -162,9 +163,31 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
     }
   }
 
+  val frameworkSet:collection.immutable.Set[String] = {
+      Source.fromFile("framework").getLines.foldLeft(collection.immutable.Set[String]()) {(a,l) =>a + l}
+  }
+  val isFwkRelevant : SSAInvokeInstruction => Boolean = instr =>{
+      val args = (0 to instr.getDeclaredTarget.getNumberOfParameters-1).foldLeft("") { (a, i) => {
+        val arg = instr.getDeclaredTarget.getParameterType(i).getName.toString
+        if (a == "") arg
+        else arg + "," + arg
+      }
+      }
+      val funStr = instr.getDeclaredTarget.getDeclaringClass.getName.toString +"." +
+        instr.getDeclaredTarget.getSelector.getName.toString + "(" + args + ")"
+      frameworkSet.contains(funStr)
+  }
+
   def executeInstr(paths : List[Path], instr : SSAInstruction, blk : ISSABasicBlock, node : CGNode, cfg : SSACFG,
                    isLoopBlk : Boolean, callStackSize : Int) : List[Path] = instr match {
     case instr : SSAInvokeInstruction =>
+      if(isFwkRelevant(instr)) {
+        val caller_loc = node.getMethod.getSourcePosition(instr.iindex)
+        //val caller =  // node.getMethod.getReference
+        val callee = FrameworkFun(instr.getDeclaredTarget.toString, caller_loc) // (callee * caller_location)
+        // add dep edge from current method context to callee
+        paths foreach { p => p.qry.addDepEdge( p.qry.depConstraints.deps()(0), callee) }
+      } //else { ??? }
       val (enterPaths, skipPaths) = enterCallee(paths, instr)
       if (!enterPaths.isEmpty) {
         if (MIN_DEBUG)
@@ -692,7 +715,8 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
   }
     
   /** merge all paths in @param joinPaths that have reached block @param join, adding path conditions if appropriate
-   *  @return paths that have been pushed through the conditional branch instruction in @param join, but no further */
+    *
+    *  @return paths that have been pushed through the conditional branch instruction in @param join, but no further */
   def mergeAtJoin(joinPaths : List[Path], join : WalaBlock, cfg : SSACFG) : List[Path] = {
     if (DEBUG) println("merging at join " + join + " with " + joinPaths.size + " paths")
     joinPaths.foreach(p =>

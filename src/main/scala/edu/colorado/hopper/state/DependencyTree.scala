@@ -1,26 +1,26 @@
 package edu.colorado.hopper.state
 
-import com.ibm.wala.classLoader.IMethod
+import com.ibm.wala.classLoader.IMethod.SourcePosition
 
-case class NRid(meth: IMethod){
+case class NRid(sp: SourcePosition){
     
 }
 
 abstract class NonReducibleVal (){
     
 }
-case class FrameworkFun(name:String, id:NRid) extends NonReducibleVal{ //need parameter for location in code
+case class FrameworkFun(name:String, loc : SourcePosition) extends NonReducibleVal{ //need parameter for location in code
     override def toString = name
 }
-case class NonFrameworkFun(name:String,id:NRid) extends NonReducibleVal{ //need parameter for location in code
+case class NonFrameworkFun(name:String,loc : SourcePosition) extends NonReducibleVal{ //need parameter for location in code
     override def toString = name
 }
 
-case class PrimitiveVal(c:AnyVal,id:NRid) extends NonReducibleVal{ //Includes all numbers/bools/chars/etc
+case class PrimitiveVal(c:AnyVal,loc : SourcePosition) extends NonReducibleVal{ //Includes all numbers/bools/chars/etc
     override def toString = c.toString
 }
-case class Variable(id:NRid) extends NonReducibleVal{ //contains the id of the variable
-    override def toString = id.toString
+case class Variable(ssa_num : Int, loc : SourcePosition) extends NonReducibleVal{ //contains the id of the variable
+    override def toString = s"v$ssa_num"
 }
 case class Empty() extends NonReducibleVal{ //An empty Dependency
 }
@@ -44,7 +44,7 @@ case class DependencyTree(depTable:collection.mutable.HashMap[NonReducibleVal,Li
     
     def replace(x: Variable, v: NonReducibleVal) = {  //replace leaf node with new dependency tree (D[v/x])
         x match {
-            case Variable(_) => 
+            case Variable(_,_) =>
             case _ => throw new IllegalArgumentException
         }
         for(e <- depTable) {
