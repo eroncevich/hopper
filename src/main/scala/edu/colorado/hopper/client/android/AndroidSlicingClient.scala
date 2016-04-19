@@ -6,7 +6,7 @@ import java.util
 import edu.colorado.walautil.Timer
 import edu.colorado.hopper.state._
 
-import edu.colorado.hopper.executor.{DefaultSymbolicExecutor, TransferFunctions}
+import edu.colorado.hopper.executor._
 //import edu.colorado.hopper.client.android.DroidelClient
 
 //others
@@ -16,27 +16,22 @@ import scala.collection.JavaConversions._
 //import com.ibm.wala.types.TypeReference
 
 
-import com.ibm.wala.analysis.pointers.HeapGraph
-import com.ibm.wala.ipa.callgraph.propagation._
-import edu.colorado.hopper.client.android.AndroidUtil._
 import edu.colorado.hopper.client.{ClientTests, NullDereferenceTransferFunctions}
-import edu.colorado.hopper.executor.{BudgetExceededException, DefaultSymbolicExecutor}
-import edu.colorado.hopper.jumping.{JumpingTransferFunctions, RelevanceRelation}
+import edu.colorado.hopper.jumping.{DefaultJumpingSymbolicExecutor, JumpingTransferFunctions, RelevanceRelation}
 import edu.colorado.hopper.solver.{ThreadSafeZ3Solver, Z3Solver}
 
 import com.ibm.wala.util.intset.OrdinalSet
 import edu.colorado.hopper.util.PtUtil
 import edu.colorado.hopper.client.android._
-import edu.colorado.hopper.executor.BudgetExceededException
 
 
 import com.ibm.wala.ssa._
 import edu.colorado.thresher.core.Options
 
-class AndroidSlicingClient(appPath: String, androidLib: File, useJPhantom: Boolean = true)
+class AndroidSlicingClient(appPath: String, sensitiveMethod: String, androidLib: File, useJPhantom: Boolean = true)
     extends DroidelClient[(Int,Int)](appPath, androidLib, useJPhantom){
                        
-    Options.JUMPING_EXECUTION = true
+    Options.JUMPING_EXECUTION = false
     val one = 1
     val DROIDEL_HOME = "../droidel" // point this at your droidel install
     val DEBUG = true
@@ -46,17 +41,18 @@ class AndroidSlicingClient(appPath: String, androidLib: File, useJPhantom: Boole
     
     override def check : (Int, Int) = {
         import walaRes._       
-        
-        
+
         val exec = {
-            val rr = new RelevanceRelation(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
-            val tf = new JumpingTransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha, rr)
-            //new TriageJumpingSymbolicExecutor(tf, rr)
-            new AndroidJumpingSymbolicExecutor(tf, rr)
+          val rr = new AndroidRelevanceRelation(appTransformer, walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
+          //val tf = new JumpingTransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha, rr)
+          val tf = new TransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
+          new AndroidJumpingSymbolicExecutor(tf,rr)
         }
+
         
         println("TRANSFER")
-        
+
+
         val invokeInst =
       walaRes.cg.foldLeft (List.empty[(Int,CGNode)]) ((l, n) => // for each node n in the call graph
         if (shouldCheck(n)) n.getIR match { // don't analyze library code
@@ -67,11 +63,21 @@ class AndroidSlicingClient(appPath: String, androidLib: File, useJPhantom: Boole
             
             ir.getInstructions.zipWithIndex.foldLeft(l)((l, pair) => {
               val (i, index) = pair
+              //println(i)
               i match {
                 case i: SSAInvokeInstruction =>
-                  //SSAInvoke: < Application, Lcom/plv/evan/sensitiveunit1/unit, sensitiveMethod()V >
-                  if(i.getCallSite.getDeclaredTarget.toString == "< Application, Lcom/plv/evan/sensitiveunit1/unit, sensitiveMethod()V >"){
-                    
+                  val args = (0 to i.getDeclaredTarget.getNumberOfParameters-1).foldLeft("") { (a, ind) => {
+                    val arg = i.getDeclaredTarget.getParameterType(ind).getName.toString
+                    if (a == "") arg
+                    else arg + "," + arg
+                  }
+                  }
+                  val funStr = i.getDeclaredTarget.getDeclaringClass.getName.toString +"." +
+                    i.getDeclaredTarget.getSelector.getName.toString + "(" + args + ")"
+                  //println(sensitiveMethod == funStr)
+                  //if(i.getCallSite.getDeclaredTarget.toString == "< Application, Lcom/plv/evan/sensitiveunit1/unit, sensitiveMethod()V >"){
+                  if(sensitiveMethod==funStr){
+
                       println(s"Found ${i.getCallSite.getDeclaredTarget}");
                       val srcLine = IRUtil.getSourceLine(i, ir)
                       print("Checking invoke instruction "); ClassUtil.pp_instr (i, ir); println(s" at line $srcLine")
