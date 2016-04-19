@@ -96,7 +96,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
   }
   
   // special case of executeBackwardUntil thats stops upon finding a witness, throws exception to return to top level
-  def executeBackwardUntilWitnessFound(passPaths : List[Path], test : Path => Boolean = Util.RET_TRUE, 
+  def executeBackwardUntilWitnessFound(passPaths : List[Path], test : Path => Boolean = Util.RET_TRUE,
       failPaths : List[Path] = List.empty[Path]) : List[Path] = 
     executeBackwardWhile(passPaths, (p => if (p.foundWitness) throw WitnessFoundException else test(p)), failPaths)
 
@@ -175,18 +175,22 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
       }
       val funStr = instr.getDeclaredTarget.getDeclaringClass.getName.toString +"." +
         instr.getDeclaredTarget.getSelector.getName.toString + "(" + args + ")"
+      println(funStr)
+      println(frameworkSet)
       frameworkSet.contains(funStr)
   }
 
   def executeInstr(paths : List[Path], instr : SSAInstruction, blk : ISSABasicBlock, node : CGNode, cfg : SSACFG,
                    isLoopBlk : Boolean, callStackSize : Int) : List[Path] = instr match {
     case instr : SSAInvokeInstruction =>
+      println("Is Relevant: " + isFwkRelevant(instr))
       if(isFwkRelevant(instr)) {
         val caller_loc = node.getMethod.getSourcePosition(instr.iindex)
         //val caller =  // node.getMethod.getReference
         val callee = FrameworkFun(instr.getDeclaredTarget.toString, caller_loc) // (callee * caller_location)
         // add dep edge from current method context to callee
-        paths foreach { p => p.qry.addDepEdge( p.qry.depConstraints.deps()(0), callee) }
+        paths foreach { p => if(p.qry.depConstraints.currTree.deps.length ==0 ) p.qry.addDepEdge( Empty(), callee)
+              else p.qry.addDepEdge( p.qry.depConstraints.currTree.deps()(0), callee) }
       } //else { ??? }
       val (enterPaths, skipPaths) = enterCallee(paths, instr)
       if (!enterPaths.isEmpty) {
@@ -304,6 +308,11 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
         val newPaths = callers.foldLeft (List.empty[Path]) ((lst, caller) => {
           val callerPath = p.deepCopy
           // create a path for each caller and call site of the current method
+          if (caller.getMethod.getSelector.getName.toString == "performCreate") {
+            println("Reached the beginning of the Activity, purposely crashing")
+            p.clearCallStack()
+            throw new IllegalArgumentException
+          }
           if (MIN_DEBUG) println("caller: " + ClassUtil.pretty(caller))
           if (callerInvMap.pathEntailsInv((caller, callee), callerPath)) {
             if (Options.PRINT_REFS) println("Refuted by caller summary.")

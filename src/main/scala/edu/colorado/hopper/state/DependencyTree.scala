@@ -2,6 +2,8 @@ package edu.colorado.hopper.state
 
 import com.ibm.wala.classLoader.IMethod.SourcePosition
 
+import scala.collection.mutable
+
 case class NRid(sp: SourcePosition){
     
 }
@@ -10,7 +12,7 @@ abstract class NonReducibleVal (){
     
 }
 case class FrameworkFun(name:String, loc : SourcePosition) extends NonReducibleVal{ //need parameter for location in code
-    override def toString = name
+    override def toString = name+ " at "+loc.toString
 }
 case class NonFrameworkFun(name:String,loc : SourcePosition) extends NonReducibleVal{ //need parameter for location in code
     override def toString = name
@@ -24,9 +26,33 @@ case class Variable(ssa_num : Int, loc : SourcePosition) extends NonReducibleVal
 }
 case class Empty() extends NonReducibleVal{ //An empty Dependency
 }
+/** The Dependency Event is a linked list of Dependency Trees, where a new tree is
+  * created for each change of events*/
+class DependencyEvents(){
+    var currTree = DependencyTree(mutable.HashMap():collection.mutable.HashMap[NonReducibleVal,List[NonReducibleVal]])
+    var eventTrees:List[DependencyTree] = List()
+    def pushDepTree() ={
+        eventTrees = eventTrees ::: List(currTree)
+        currTree = DependencyTree(mutable.HashMap():collection.mutable.HashMap[NonReducibleVal,List[NonReducibleVal]])
+    }
+    def addEdge(v1: NonReducibleVal, v2: NonReducibleVal) = {
+        currTree.addEdge(v1,v2)
+    }
+    override def clone(): DependencyEvents = {
+        val de = new DependencyEvents
+        de.currTree = currTree.clone()
+        de.eventTrees = eventTrees.foldLeft(List():List[DependencyTree]){(a,t) => a:::List(t.clone())}
+        de
+    }
+    override def toString = "currTree: "+currTree+"\n" + eventTrees.toString
+}
+
+/** A hashtable of NonReducibleVals dependent on other NonReducibleVals
+  * The*/
 case class DependencyTree(depTable:collection.mutable.HashMap[NonReducibleVal,List[NonReducibleVal]]){
     val leafs = collection.mutable.Set[NonReducibleVal]()
-    //println(leafs)
+    if(depTable.isEmpty) depTable+=(Empty()->List())
+
     for( e <- depTable ) {
         for (v <- e._2){
             if(! depTable.contains(v)){
@@ -57,13 +83,12 @@ case class DependencyTree(depTable:collection.mutable.HashMap[NonReducibleVal,Li
     }
     
     def addEdge(v1: NonReducibleVal, v2: NonReducibleVal) = { //add new Edge at node v1
-        //check if entry exists
         if(depTable.contains(v1)){
             depTable+= (v1->(depTable(v1) ++ List(v2)))
-            if(leafs.contains(v1)) leafs-= v1
         }else{
-            throw new IllegalArgumentException
+            depTable+= (v1->List(v2))
         }
+        if(leafs.contains(v1)) leafs-= v1
         leafs+=v2
     }
     def getRoot():List[NonReducibleVal] ={

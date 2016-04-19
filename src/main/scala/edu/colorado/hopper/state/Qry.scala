@@ -99,11 +99,9 @@ object Qry {
     localConstraints ++= getContextualConstraints(n, localConstraints, hm)
     (localConstraints, heapConstraints)
   }
-  private def makeDepConstraints(startEdges : Iterable[PtEdge], n:CGNode, i: SSAInstruction):DependencyTree = {
-    println(startEdges)
-    println(n)
-    println(i)
-    new DependencyTree(mutable.HashMap():collection.mutable.HashMap[NonReducibleVal,List[NonReducibleVal]])
+  private def makeDepConstraints(startEdges : Iterable[PtEdge], n:CGNode, i: SSAInstruction):DependencyEvents = {
+    //new DependencyTree(mutable.HashMap():collection.mutable.HashMap[NonReducibleVal,List[NonReducibleVal]])
+    new DependencyEvents()
   }
   
   def getPT[K,V](v : K, constraints : Iterable[PtEdge]) : Set[V] = 
@@ -149,7 +147,7 @@ object Qry {
 /** mutable query holding all analysis state. program loc information (including current method and current line number) is stored in the callStack field */
 class Qry(val heapConstraints : MSet[HeapPtEdge],
           val pureConstraints : MSet[PureConstraint],
-          val depConstraints : DependencyTree,
+          val depConstraints : DependencyEvents,
 
           val callStack : CallStack,
           private val solver : Solver[_],
@@ -224,7 +222,7 @@ class Qry(val heapConstraints : MSet[HeapPtEdge],
     require(heapConstraints.contains(e), "Qry does not have heap constraint " + e + " " + this)
     heapConstraints -= e
   }
-  def addDepConstraint(v1: NonReducibleVal, v2: NonReducibleVal): Unit ={
+  def addDepEdge(v1: NonReducibleVal, v2: NonReducibleVal): Unit ={
     depConstraints.addEdge(v1,v2)
   }
 
