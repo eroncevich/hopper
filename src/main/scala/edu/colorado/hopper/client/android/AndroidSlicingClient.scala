@@ -3,11 +3,15 @@ package edu.colorado.hopper.client.android
 import java.io.File
 import java.util
 
+import com.ibm.wala.analysis.pointers.HeapGraph
+import com.ibm.wala.ipa.callgraph.propagation.{PointerKey, InstanceKey, HeapModel}
+import com.ibm.wala.util.intset.OrdinalSet
+import edu.colorado.hopper.client.android.AndroidUtil._
 import edu.colorado.walautil.Timer
 import edu.colorado.hopper.state._
 
 import edu.colorado.hopper.executor._
-//import edu.colorado.hopper.client.android.DroidelClient
+
 
 //others
 import edu.colorado.walautil._
@@ -20,7 +24,7 @@ import edu.colorado.hopper.client.{ClientTests, NullDereferenceTransferFunctions
 import edu.colorado.hopper.jumping.{DefaultJumpingSymbolicExecutor, JumpingTransferFunctions, RelevanceRelation}
 import edu.colorado.hopper.solver.{ThreadSafeZ3Solver, Z3Solver}
 
-import com.ibm.wala.util.intset.OrdinalSet
+
 import edu.colorado.hopper.util.PtUtil
 import edu.colorado.hopper.client.android._
 
@@ -31,22 +35,146 @@ import edu.colorado.thresher.core.Options
 class AndroidSlicingClient(appPath: String, sensitiveMethod: String, androidLib: File, useJPhantom: Boolean = true)
     extends DroidelClient[(Int,Int)](appPath, androidLib, useJPhantom){
                        
-    Options.JUMPING_EXECUTION = false
+    Options.JUMPING_EXECUTION = true
+    Options.CONTROL_FEASIBILITY = true
     val one = 1
     val DROIDEL_HOME = "../droidel" // point this at your droidel install
     val DEBUG = true
-    
-    //val potential_viewIDS = scala.collection.mutable.MutableList[Int]()
-    //val permToEvent = scala.collection.mutable.Map[(method,method),scala.collection.mutable.Set[view]]()
-    
+
+    def makeExec() = {
+      val rr = new AndroidRelevanceRelation(appTransformer, walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
+      val tf = new TransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
+
+
+      new AndroidJumpingSymbolicExecutor(tf, rr) {
+
+        override def returnFromCall(p : Path) : Iterable[Path] =
+          if (p.callStackSize == 1 && !p.node.getMethod.isInit) {
+            val qry = p.qry
+            // keep one constraint on null and the access path to the constraint--drop all other constraints
+            qry.heapConstraints.find(e => e.snk match {
+              case p@PureVar(t) if t.isReferenceType => qry.isNull(p)
+              case _ => false
+            }) match {
+              case Some(e) =>
+                val keepEdges = qry.getAccessPrefixPathFor(e)
+                val shouldJump =
+                  isEntrypointCallback(p.node, cg) || {
+                    e match {
+                      case ObjPtEdge(_, InstanceFld(fld), _) =>
+                        val keepEdges = qry.getAccessPrefixPathFor(e)
+                        // guaranteed to exist because getAccessPathPrefix returns at least e
+                        val accessPathHead = keepEdges.head.src
+                        // see if the access path leading to the null constraint is rooted in a function parameter other
+                        // than "this". if this is the case, we want to keep going backward without jumping in order to
+                        // get a more complete access path to the null constraint
+                        val accessPathRootedInNonThisParam =
+                          qry.localConstraints.exists(e => e match {
+                            case LocalPtEdge(LocalVar(key), snk) =>
+                              snk == accessPathHead && !IRUtil.isThisVar(key.getValueNumber)
+                            case _ => false
+                          })
+                        def someCallerMayReadOrWriteFld(): Boolean = cg.getPredNodes(p.node).exists(n => n.getIR match {
+                          case null => false
+                          case ir =>
+                            val fldRef = fld.getReference
+                            ir.iterateAllInstructions().exists(i => i match {
+                              case i: SSAFieldAccessInstruction => i.getDeclaredField == fldRef
+                              case _ => false
+                            })
+                        })
+                        // don't jump if the access path is not rooted in this or if a caller may read/write the field
+                        // that points to nul
+                        !accessPathRootedInNonThisParam && !someCallerMayReadOrWriteFld
+                      case _ => false
+                    }
+                  }
+                if (!shouldJump) super.returnFromCallNoJump(p)
+                else { // have access path originating from this or at entrypoint callback, jump
+                  if (DEBUG) println(s"have complete access path or at function boundary of entrypoint cb ${p.node}")
+                  // weaken query by removing all constraints but access path, then jump
+                  qry.heapConstraints.foreach(e => if (!keepEdges.contains(e)) qry.removeHeapConstraint(e))
+                  doJump(p)
+                }
+              case None =>
+                // keep entire query
+                if (isEntrypointCallback(p.node, cg)) { // at function of entrypoint callback--we should jump
+                  if (DEBUG) println(s"at function boundary of entrypoint cb ${p.node}")
+                  doJump(p)
+                } else super.returnFromCallNoJump(p)
+            }
+          } else super.returnFromCallNoJump(p)
+
+        //override def handleEmptyCallees(paths : List[Path], i : SSAInvokeInstruction, caller : CGNode) : List[Path] =
+          //handleEmptyCalleesImpl(paths, i, caller, tf.hm)
+
+      }
+    }
+  def makeTF(rr : RelevanceRelation) = new TransferFunctions(walaRes.cg,walaRes.hg,walaRes.hm,walaRes.cha){//NullDereferenceTransferFunctions(walaRes, new File(s"$appPath/nit_annots.xml")) {
+
+    def useMayBeRelevantToQuery(use : Int, qry : Qry, n : CGNode, hm : HeapModel,
+                                hg : HeapGraph[InstanceKey]) : Boolean = {
+      val tbl = n.getIR.getSymbolTable
+      !tbl.isConstant(use) && {
+        val lpk = Var.makeLPK(use, n, hm)
+        qry.localConstraints.exists(e => e.src.key == lpk) || {
+          val queryInstanceKeys = qry.getAllObjVars.flatMap(o => o.rgn)
+          queryInstanceKeys.intersect(PtUtil.getPt(lpk, hg)).nonEmpty || qry.localMayPointIntoQuery(lpk, n, hm, hg, cha)
+        }
+      }
+    }
+
+//    def isNullConstraint(cond : SSAConditionalBranchInstruction, n : CGNode) : Boolean = {
+//      val tbl = n.getIR.getSymbolTable
+//      tbl.isNullConstant(cond.getUse(0)) || tbl.isNullConstant(cond.getUse(1))
+//    }
+
+    /** @return true if we should add the conditional expression from @param cond as a constraint given that we want to
+      * refute @param qry, false otherwise */
+    def shouldAddConditionalConstraint(cond : SSAConditionalBranchInstruction, qry : Qry, n : CGNode) : Boolean = {
+      val shouldAdd =
+        useMayBeRelevantToQuery(cond.getUse(0), qry, n, hm, hg) ||
+          useMayBeRelevantToQuery(cond.getUse(1), qry, n, hm, hg)
+      if (DEBUG && !shouldAdd) {
+        print("Not adding cond "); ClassUtil.pp_instr(cond, n.getIR); println(" since it may be irrel")
+      }
+      shouldAdd
+    }
+
+    override def isCallRelevant(i : SSAInvokeInstruction, caller : CGNode, callee : CGNode, qry : Qry) : Boolean =
+      if (Options.JUMPING_EXECUTION)
+        isRetvalRelevant(i, caller, qry) ||
+          JumpingTransferFunctions.doesCalleeModifyHeap(callee, qry, rr, cg,
+            getReachable = getReachableInAndroidCG)
+      else super.isCallRelevant(i, caller, callee, qry)
+
+    override def dropCallConstraints(qry : Qry, callee : CGNode,
+                                     modRef : util.Map[CGNode,OrdinalSet[PointerKey]],
+                                     loopDrop : Boolean) : Unit =
+      if (Options.JUMPING_EXECUTION)
+        JumpingTransferFunctions.dropCallConstraints(qry, callee, rr, cg,
+          getReachable = getReachableInAndroidCG)
+      else super.dropCallConstraints(qry, callee, modRef, loopDrop)
+
+    override def executeCond(cond : SSAConditionalBranchInstruction, qry : Qry, n : CGNode,
+                             isThenBranch : Boolean) : Boolean =
+    // decide whether or not we should keep the condition
+      if (shouldAddConditionalConstraint(cond, qry, n)) super.executeCond(cond, qry, n, isThenBranch)
+      else true
+  }
+
+
     override def check : (Int, Int) = {
         import walaRes._       
 
         val exec = {
           val rr = new AndroidRelevanceRelation(appTransformer, walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
-          //val tf = new JumpingTransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha, rr)
-          val tf = new TransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
-          new AndroidJumpingSymbolicExecutor(tf,rr)
+          //val rr = new RelevanceRelation(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
+          val tf = new JumpingTransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha, rr)
+          //val tf = new TransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
+          //val tf = makeTF(rr)
+          //new AndroidJumpingSymbolicExecutor(tf,rr)
+          new DefaultJumpingSymbolicExecutor(tf,rr)
         }
 
         

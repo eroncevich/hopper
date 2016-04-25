@@ -176,7 +176,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
       val funStr = instr.getDeclaredTarget.getDeclaringClass.getName.toString +"." +
         instr.getDeclaredTarget.getSelector.getName.toString + "(" + args + ")"
       println(funStr)
-      println(frameworkSet)
+      //println(frameworkSet)
       frameworkSet.contains(funStr)
   }
 
@@ -310,8 +310,8 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
           // create a path for each caller and call site of the current method
           if (caller.getMethod.getSelector.getName.toString == "performCreate") {
             println("Reached the beginning of the Activity, purposely crashing")
-            p.clearCallStack()
-            throw new IllegalArgumentException
+            //p.clearCallStack()
+            ???
           }
           if (MIN_DEBUG) println("caller: " + ClassUtil.pretty(caller))
           if (callerInvMap.pathEntailsInv((caller, callee), callerPath)) {
@@ -335,9 +335,10 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
                 if (DEBUG) println("handled recursive call while forking to all callers--dropping constraints")
                 sitePath.dropConstraintsProduceableInCall(invoke, caller, callee, tf)
               }
+              //val callBlk = callerCFG.exit()
               val callBlk = callerCFG.getBlockForInstruction(index)
               // call is always the last instruction in a block. set to line *before* the call
-              val callLine = callBlk.asInstanceOf[SSACFG#BasicBlock].getAllInstructions().size - 2          
+              val callLine = callBlk.asInstanceOf[SSACFG#BasicBlock].getAllInstructions().size - 2
               assert(callBlk.getLastInstruction == invoke,
                      s"Expected call to be last instruction in $callBlk, but got ${callBlk.getLastInstruction}. IR $callerIR")
               if (sitePath.returnFromCall(caller, callee, callBlk, callLine, invoke, tf)) {

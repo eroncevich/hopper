@@ -11,4 +11,6 @@ LIB=$(pwd)/lib
 export LD_LIBRARY_PATH=$LIB:$LD_LIBRARY_PATH
 export DYLD_LIBRARY_PATH=$LIB:$DYLD_LIBRARY_PATH
 
-java -Xmx8g -jar $JAR $@
+#java -Xmx8g -jar $JAR $@
+ARGS="run-main edu.colorado.hopper.driver.Main $@"
+sbt "$ARGS"
