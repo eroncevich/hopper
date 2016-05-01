@@ -185,13 +185,17 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
     case instr : SSAInvokeInstruction =>
       println("Is Relevant: " + isFwkRelevant(instr))
       if(isFwkRelevant(instr)) {
+        val caller = Variable(instr.getReceiver)
+        val args = {1 to instr.getNumberOfParameters-1}.map{ii => Variable(instr.getUse(ii))}
+
         val caller_loc = node.getMethod.getSourcePosition(instr.iindex)
-        //val caller =  // node.getMethod.getReference
         val callee = FrameworkFun(instr.getDeclaredTarget.toString, caller_loc) // (callee * caller_location)
+
         // add dep edge from current method context to callee
-        paths foreach { p => if(p.qry.depConstraints.currTree.deps.length ==0 ) p.qry.addDepEdge( Empty(), callee)
-              else p.qry.addDepEdge( p.qry.depConstraints.currTree.deps()(0), callee) }
-      } //else { ??? }
+        for (a <- args) {
+          paths foreach { p => p.qry.addDepEdge(caller,a, callee) }
+        }
+      }
       val (enterPaths, skipPaths) = enterCallee(paths, instr)
       if (!enterPaths.isEmpty) {
         if (MIN_DEBUG)
@@ -309,9 +313,9 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
           val callerPath = p.deepCopy
           // create a path for each caller and call site of the current method
           if (caller.getMethod.getSelector.getName.toString == "performCreate") {
-            println("Reached the beginning of the Activity, purposely crashing")
+            println("Reached the beginning of the Activity, purposely returning")
             //p.clearCallStack()
-            ???
+            throw WitnessFoundException
           }
           if (MIN_DEBUG) println("caller: " + ClassUtil.pretty(caller))
           if (callerInvMap.pathEntailsInv((caller, callee), callerPath)) {
@@ -328,6 +332,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
               case (i : SSAInvokeInstruction, index) if cg.getPossibleTargets(caller, i.getCallSite()).contains(callee) => (i, index)
             })
             .foldLeft (lst) ((lst, pair) => {
+              println("PC" +caller)
               val (invoke, index) = pair
               val sitePath = callerPath.deepCopy
               if (recursive) {
@@ -337,6 +342,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
               }
               //val callBlk = callerCFG.exit()
               val callBlk = callerCFG.getBlockForInstruction(index)
+              println(callBlk.getLastInstruction)
               // call is always the last instruction in a block. set to line *before* the call
               val callLine = callBlk.asInstanceOf[SSACFG#BasicBlock].getAllInstructions().size - 2
               assert(callBlk.getLastInstruction == invoke,
@@ -485,6 +491,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
           // TODO: this is more than a bit weird--we should do something for the case where newPassPaths
           // is a non-empty subset of instrPaths
           val (newPassPaths, newFailPaths) = filterFailPaths(instrPaths, passPaths, failPaths, test)
+          //for(p<-newPassPaths){println(p.qry.node.getMethod)}
           if (newPassPaths.isEmpty) (newPassPaths, newFailPaths)
           else returnToCaller(instrPaths, passPaths, failPaths, test)
         }

@@ -373,7 +373,10 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
         })
 
       val mustAliasCases = setUpJumpPaths(nodesToJumpToMustAlias, mustAlias = true)
-      Some(setUpJumpPaths(nodesToJumpToMustNotAlias, mustAlias = false, mustAliasCases))
+      val jumpPaths = setUpJumpPaths(nodesToJumpToMustNotAlias, mustAlias = false, mustAliasCases)
+      //for(p<-jumpPaths){println(p.qry.node.getIR)}
+      for(p<-jumpPaths){p.qry.getSlice(modMap(p.qry.node))}
+      Some(jumpPaths)
     }
   }
 }

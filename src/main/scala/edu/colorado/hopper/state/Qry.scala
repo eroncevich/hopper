@@ -222,8 +222,8 @@ class Qry(val heapConstraints : MSet[HeapPtEdge],
     require(heapConstraints.contains(e), "Qry does not have heap constraint " + e + " " + this)
     heapConstraints -= e
   }
-  def addDepEdge(v1: NonReducibleVal, v2: NonReducibleVal): Unit ={
-    depConstraints.addEdge(v1,v2)
+  def addDepEdge(v1: NonReducibleVal, v2: NonReducibleVal, f:FrameworkFun): Unit ={
+    depConstraints.addEdge(v1,v2,f)
   }
 
   def removeConstraint(e : PtEdge) = e match {
@@ -542,6 +542,11 @@ class Qry(val heapConstraints : MSet[HeapPtEdge],
     catch {
       case e : UnknownSMTResult => true // conservatively assume SAT
     }
+  }
+  def getSlice(impInstrs:Set[SSAInstruction]): Unit ={
+    //println(node.getIR)
+    //for(instr <- impInstrs){println(instr)}
+
   }
   
   def getPT(v : StackVar) : Set[Val] = Qry.getPT(v, localConstraints)
