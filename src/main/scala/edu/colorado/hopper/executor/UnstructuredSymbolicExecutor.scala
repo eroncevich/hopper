@@ -8,7 +8,7 @@ import com.ibm.wala.ipa.cfg.ExceptionPrunedCFG
 import com.ibm.wala.ipa.cha.IClassHierarchy
 import com.ibm.wala.shrikeBT.IConditionalBranchInstruction.Operator.EQ
 import com.ibm.wala.ssa._
-import com.ibm.wala.types.TypeReference
+import com.ibm.wala.types.{ClassLoaderReference, TypeReference}
 import com.ibm.wala.util.graph.dominators.Dominators
 import com.twitter.util.LruMap
 import edu.colorado.hopper.executor.UnstructuredSymbolicExecutor._
@@ -164,20 +164,13 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
   }
 
   val frameworkSet:collection.immutable.Set[String] = {
-      Source.fromFile("framework").getLines.foldLeft(collection.immutable.Set[String]()) {(a,l) =>a + l}
+      Source.fromFile("frameworkO").getLines.foldLeft(collection.immutable.Set[String]()) {(a,l) =>a + l}
   }
   val isFwkRelevant : SSAInvokeInstruction => Boolean = instr =>{
-      val args = (0 to instr.getDeclaredTarget.getNumberOfParameters-1).foldLeft("") { (a, i) => {
-        val arg = instr.getDeclaredTarget.getParameterType(i).getName.toString
-        if (a == "") arg
-        else arg + "," + arg
-      }
-      }
-      val funStr = instr.getDeclaredTarget.getDeclaringClass.getName.toString +"." +
-        instr.getDeclaredTarget.getSelector.getName.toString + "(" + args + ")"
-      println(funStr)
-      //println(frameworkSet)
-      frameworkSet.contains(funStr)
+     val funStr = instr.getDeclaredTarget.getDeclaringClass.getName.toString
+    println(funStr)
+
+    frameworkSet.contains(funStr)
   }
 
   def executeInstr(paths : List[Path], instr : SSAInstruction, blk : ISSABasicBlock, node : CGNode, cfg : SSACFG,

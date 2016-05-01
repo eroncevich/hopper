@@ -14,25 +14,30 @@ case class Variable(ssa_num : Int) extends NonReducibleVal{ //contains the id of
     override def toString = s"v$ssa_num"
 }
 case class FrameworkFun(methodName: String, loc : SourcePosition){
-
+    override def toString = methodName.toString
 }
 
 /** The Dependency Event is a linked list of Dependency Trees, where a new tree is
   * created for each change of events*/
 class DependencyEvents(){
     var currTree = DependencyTree(mutable.HashMap():collection.mutable.HashMap[NonReducibleVal,List[(NonReducibleVal,FrameworkFun)]])
-    var eventTrees:List[DependencyTree] = List()
+    var currSeeds = List():List[NonReducibleVal]
+    var eventTrees:List[(DependencyTree,List[NonReducibleVal])] = List()
     def pushDepTree() ={
-        eventTrees = eventTrees ::: List(currTree)
+        eventTrees = eventTrees ::: List((currTree,currSeeds))
         currTree = DependencyTree(mutable.HashMap():collection.mutable.HashMap[NonReducibleVal,List[(NonReducibleVal,FrameworkFun)]])
     }
     def addEdge(v1: NonReducibleVal, v2: NonReducibleVal, f:FrameworkFun) = {
         currTree.addEdge(v1,v2,f)
     }
+    def addSeed(seed: NonReducibleVal) ={
+        currSeeds= currSeeds ::: List(seed)
+    }
+
     override def clone(): DependencyEvents = {
         val de = new DependencyEvents
         de.currTree = currTree.clone()
-        de.eventTrees = eventTrees.foldLeft(List():List[DependencyTree]){(a,t) => a:::List(t.clone())}
+        de.eventTrees = eventTrees.foldLeft(List():List[(DependencyTree,List[NonReducibleVal])]){(a,t) => a:::List((t._1.clone,t._2))}
         de
     }
     override def toString = "currTree: "+currTree+"\n" + eventTrees.toString
