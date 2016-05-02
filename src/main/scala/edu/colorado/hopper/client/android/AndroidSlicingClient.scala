@@ -49,127 +49,55 @@ class AndroidSlicingClient(appPath: String, sensitiveMethod: String, androidLib:
 
       override def returnFromCall(p: Path): Iterable[Path] = {
         println("retrnFromCall")
-        if(p.qry.node.getMethod.toString=="< Primordial, Landroid/view/View, performClick()Z >"){
-        }
-        if(p.qry.node.getMethod.toString=="< Application, Lcom/plv/evan/sensitiveunit1/unit$1, onClick(Landroid/view/View;)V >"){
+        if (p.qry.node.getMethod.toString == "< Application, Lcom/plv/evan/sensitiveunit1/unit$1, onClick(Landroid/view/View;)V >") {
           val qry = p.qry
-          val caller = getCallers(walaRes.cg,qry.node).head
+          val caller = getCallers(walaRes.cg, qry.node).head
           println(caller)
-          val instrs =caller.getIR.getInstructions.filter{ i => i match{
-            case ii:SSAInvokeInstruction =>cg.getPossibleTargets(caller, ii.getCallSite()).contains(qry.node)
-            case _=> false
-          }}
-          val heapInstrs = caller.getIR.getInstructions.find{i=>i match{
-            case ii:SSAGetInstruction => i.iindex==17
-            case _=>false
-          }}
-          val heapInstr = heapInstrs match{
-            case Some(i:SSAGetInstruction) => i
+          val instrs = caller.getIR.getInstructions.filter { i => i match {
+            case ii: SSAInvokeInstruction => cg.getPossibleTargets(caller, ii.getCallSite()).contains(qry.node)
+            case _ => false
+          }
+          }
+          val heapInstrs = caller.getIR.getInstructions.find { i => i match {
+            case ii: SSAGetInstruction => i.iindex == 17
+            case _ => false
+          }
+          }
+          val heapInstr = heapInstrs match {
+            case Some(i: SSAGetInstruction) => i
             case _ => throw new ClassCastException
           }
 
-          val instr = instrs.head match{
-            case i:SSAInvokeInstruction => i
+          val instr = instrs.head match {
+            case i: SSAInvokeInstruction => i
             case _ => throw new ClassCastException
           }
           println(instr)
           val invokeUse = instr.getDef
-          val receiver = Var.makeLPK(1,qry.node,walaRes.hm)
+          val receiver = Var.makeLPK(1, qry.node, walaRes.hm)
           val iFld = cha.resolveField(heapInstr.getDeclaredField)
-          println("f "+iFld)
+          //println("f "+iFld)
           //val heapSrc = Var.makeLPk(heapInstr.getDef(), caller, walaRes.hm)
           //ObjVar()//setInstanceKey
-          println(PtUtil.getPt(Var.makeLPK(heapInstr.getRef,caller,walaRes.hm),walaRes.hg))
-          val instKeys = PtUtil.getPt(Var.makeLPK(heapInstr.getRef,caller,walaRes.hm),walaRes.hg)
+          //println(PtUtil.getPt(Var.makeLPK(heapInstr.getRef,caller,walaRes.hm),walaRes.hg))
+          val instKeys = PtUtil.getPt(Var.makeLPK(heapInstr.getRef, caller, walaRes.hm), walaRes.hg)
 
           //PtEdge.make(null:HeapVar,iFld,ObjVar(PtUtil.getPt(receiver, walaRes.hg)))
-          val hConstraint = PtEdge.make(ObjVar(instKeys),iFld,ObjVar(PtUtil.getPt(receiver, walaRes.hg)))
+          val hConstraint = PtEdge.make(ObjVar(instKeys), iFld, ObjVar(PtUtil.getPt(receiver, walaRes.hg)))
           qry.addHeapConstraint(hConstraint)
-          println(hConstraint)
-          println(p)
+          //println(hConstraint)
+          //println(p)
           return doJump(p)
 
-
-          /*val jumpSet = walaRes.hg.getPointerAnalysis.getPointsToSet(receiver)
-          for(j<-jumpSet){
-            val sites = j.getCreationSites(walaRes.cg).toList
-            for(s<- sites){
-              println(s.fst)
-              println(s.snd)
-              println(s.fst.getIR.getNew(s.snd))
-              val newInstr = s.fst.getIR.getNew(s.snd)
-              //< Primordial, Landroid/view/View, mListenerInfo, <Primordial,Landroid/view/View$ListenerInfo>
-              //PtEdge.make(null:HeapVar,null:Fld,ObjVar(PtUtil.getPt(receiver, walaRes.hg)))
-              //ObjPtEdge(ObjVar(Var.makeLPK(10,caller,walaRes.hm)),heapInstr.getDeclaredField,ObjVar(PtUtil.getPt(receiver, walaRes.hg)))
-              //println(PtUtil.get(ObjVar(PtUtil.getPt(receiver, walaRes.hg)),walaRes.hg))
-              //PtUtil.get(PtEdge.make(receiver, ObjVar(PtUtil.getPt(receiver, walaRes.hg))),walaRes.hm)
-            }
-
-          }*/
-          //PtEdge.make(ObjVar(jumpSet.toSet),???:Field,???:Val)
-          throw WitnessFoundException
-        }else{return super.returnFromCallNoJump(p)}
-/*
-        if (p.callStackSize == 1 && !p.node.getMethod.isInit) {
-          val qry = p.qry
-          // keep one constraint on null and the access path to the constraint--drop all other constraints
-          println(qry.node)
-          qry.heapConstraints.find(e => true) match {
-            case Some(e) =>
-              val keepEdges = qry.getAccessPrefixPathFor(e)
-              val shouldJump =
-                isEntrypointCallback(p.node, cg) || {
-                  e match {
-                    case ObjPtEdge(_, InstanceFld(fld), _) =>
-                      val keepEdges = qry.getAccessPrefixPathFor(e)
-                      // guaranteed to exist because getAccessPathPrefix returns at least e
-                      val accessPathHead = keepEdges.head.src
-                      println("E::" + e)
-                      println(accessPathHead)
-                      // see if the access path leading to the null constraint is rooted in a function parameter other
-                      // than "this". if this is the case, we want to keep going backward without jumping in order to
-                      // get a more complete access path to the null constraint
-                      val accessPathRootedInNonThisParam =
-                        qry.localConstraints.exists(e => e match {
-                          case LocalPtEdge(LocalVar(key), snk) =>
-                            snk == accessPathHead && !IRUtil.isThisVar(key.getValueNumber)
-                          case _ => false
-                        })
-                      def someCallerMayReadOrWriteFld(): Boolean = cg.getPredNodes(p.node).exists(n => n.getIR match {
-                        case null => false
-                        case ir =>
-                          val fldRef = fld.getReference
-                          ir.iterateAllInstructions().exists(i => i match {
-                            case i: SSAFieldAccessInstruction => i.getDeclaredField == fldRef
-                            case _ => false
-                          })
-                      })
-                      // don't jump if the access path is not rooted in this or if a caller may read/write the field
-                      // that points to nul
-                      !accessPathRootedInNonThisParam && !someCallerMayReadOrWriteFld
-                    case _ => false
-                  }
-                }
-              if (!shouldJump) super.returnFromCallNoJump(p)
-              else {
-                // have access path originating from this or at entrypoint callback, jump
-                if (DEBUG) println(s"have complete access path or at function boundary of entrypoint cb ${p.node}")
-                // weaken query by removing all constraints but access path, then jump
-                qry.heapConstraints.foreach(e => if (!keepEdges.contains(e)) qry.removeHeapConstraint(e))
-                doJump(p)
-              }
-            case None =>
-              // keep entire query
-              if (isEntrypointCallback(p.node, cg)) {
-                // at function of entrypoint callback--we should jump
-                if (DEBUG) println(s"at function boundary of entrypoint cb ${p.node}")
-                doJump(p)
-              } else super.returnFromCallNoJump(p)
+        }/*if(isEntrypointCallback(p.node,walaRes.cg)){
+          if(p.getBackup){
+            ???
+          }else{
+            super.returnFromCallNoJump(p)
           }
-        } else super.returnFromCallNoJump(p)*/
-
-        //override def handleEmptyCallees(paths : List[Path], i : SSAInvokeInstruction, caller : CGNode) : List[Path] =
-        //handleEmptyCalleesImpl(paths, i, caller, tf.hm)
+        }*/else{
+          return super.returnFromCallNoJump(p)
+        }
       }
     }
   }

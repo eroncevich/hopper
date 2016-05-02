@@ -178,15 +178,27 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
     case instr : SSAInvokeInstruction =>
       println("Is Relevant: " + isFwkRelevant(instr))
       if(isFwkRelevant(instr)) {
-        val caller = Variable(instr.getReceiver)
-        val args = {1 to instr.getNumberOfParameters-1}.map{ii => Variable(instr.getUse(ii))}
+        val caller = Variable(instr.getReceiver, node)
+        val args = {1 to instr.getNumberOfParameters-1}.map{ii => Variable(instr.getUse(ii),node)}
 
         val caller_loc = node.getMethod.getSourcePosition(instr.iindex)
         val callee = FrameworkFun(instr.getDeclaredTarget.toString, caller_loc) // (callee * caller_location)
 
         // add dep edge from current method context to callee
         for (a <- args) {
-          paths foreach { p => p.qry.addDepEdge(caller,a, callee) }
+          for( p<- paths){
+            p.qry.addDepEdge(caller,a, callee)
+            //instr.getDeclaredTarget.
+            //p.qry.addDepEdge(a,Variable())
+            //val callees = cg.getPossibleTargets(node, instr.getCallSite())
+          }
+        }
+        for(p <- paths){
+          val callNode = cg.getNodes(instr.getDeclaredTarget).head
+          for(ii <- {1 to instr.getNumberOfParameters-1}){
+            p.qry.addDepEdge(Variable(instr.getUse(ii),node),Variable(ii,callNode),FrameworkFun("argument",null))
+          }
+          //println("Hey"+cg.getNodes(instr.getDeclaredTarget))
         }
       }
       val (enterPaths, skipPaths) = enterCallee(paths, instr)

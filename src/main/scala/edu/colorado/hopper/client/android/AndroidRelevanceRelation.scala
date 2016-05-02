@@ -5,7 +5,7 @@ import com.ibm.wala.classLoader.{IMethod, IClass}
 import com.ibm.wala.ipa.callgraph.{CGNode, CallGraph}
 import com.ibm.wala.ipa.callgraph.propagation.{PointerKey, LocalPointerKey, HeapModel, InstanceKey}
 import com.ibm.wala.ipa.cha.IClassHierarchy
-import com.ibm.wala.ssa.{SSAPutInstruction, SSAInstruction}
+import com.ibm.wala.ssa.{SSAGetInstruction, SSAPutInstruction, SSAInstruction}
 import com.ibm.wala.types.{Selector, MethodReference, TypeName}
 import com.ibm.wala.util.graph.traverse.BFSIterator
 import com.ibm.wala.util.intset.OrdinalSet
@@ -16,6 +16,7 @@ import edu.colorado.droidel.driver.AndroidAppTransformer
 import edu.colorado.hopper.jumping.ControlFeasibilityRelevanceRelation
 import edu.colorado.hopper.util.PtUtil
 import edu.colorado.walautil._
+import edu.colorado.hopper.state.NonReducibleVal
 
 import scala.collection.JavaConversions._
 
@@ -336,6 +337,14 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
     else {
       val qry = p.qry
       val modMap = super.getNodeModifierMap(qry, ignoreLocalConstraints = true)
+      println("MM"+modMap)
+      for(m<-modMap){for(instr<-m._2){ instr match{
+        case i:SSAPutInstruction => p.qry.addSeed(Variable(i.getUse(1),p.node ))
+        case _ => ???
+      }
+
+      }}
+      println("newP: "+p)
       if (DEBUG) println(s"Before control-feas filtering, ${modMap.keys} are relevant")
       val (nodesToJumpToMustAlias, nodesToJumpToMustNotAlias) = controlFeasibilityFilter(modMap, qry.node)
 
@@ -376,6 +385,7 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
       val jumpPaths = setUpJumpPaths(nodesToJumpToMustNotAlias, mustAlias = false, mustAliasCases)
       //for(p<-jumpPaths){println(p.qry.node.getIR)}
       for(p<-jumpPaths){p.qry.getSlice(modMap(p.qry.node))}
+      //val jumpDepPaths = jumpPaths.map{p=>Path()}
       Some(jumpPaths)
     }
   }

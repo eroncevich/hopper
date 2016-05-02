@@ -192,7 +192,10 @@ class Qry(val heapConstraints : MSet[HeapPtEdge],
   }
   
   def removePureConstraint(p : PureConstraint) : Unit = pureConstraints -= p
-  
+
+  def addSeed(seed:NonReducibleVal) ={
+    depConstraints.addSeed(seed)
+  }
   def addHeapConstraint(e : HeapPtEdge) : Boolean = if (heapConstraints.contains(e)) true else {
     
     def simultaneousPointsToError : Boolean = {
