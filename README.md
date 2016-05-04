@@ -5,6 +5,8 @@ Hopper
 
 Hopper is a goal-directed static analysis tool for languages that run on the JVM. It is a much-improved and more feature-ful version of [Thresher](https://github.com/cuplv/thresher) written in Scala rather than Java.
 
+This is an extended version of Hopper, adding in dependency analysis for Framework Relevant Slicing
+
 Installation
 ------------
 Hopper requires [sbt](http://www.scala-sbt.org/download.html) 0.1 or later.
@@ -31,23 +33,21 @@ Usage
 -----
 Run 
 
-    ./hopper.sh -app <path_to_bytecodes> -<check>
+    ./hopper.sh <path_to_bytecodes> <path_to_file_containing_sensitive_method>
 
-where `<path_to_bytecodes>` is a path to a JAR or directory containing the Java bytecodes to be checked and `<check>` is one of `check_android_derefs` (check nulls for null dereferences with special handling for Android), `-check_casts` (check safety of downcasts), `-check_array_bounds` (check for out-of-bounds array accesses), `-check_nulls` (check for null dereferences), or `-check_android_leaks` (check for Android memory leaks).
-
-The primary advantage of Hopper over Thresher is the `-jumping_execution` flag, which enables goal-directed control-flow abstraction. This flag tells Hopper to try to achieve better scalability by "jumping" between relevant code regions rather than strictly following the program's control-flow. For better precision while jumping, use the `-control_feasibility` flag.
-
-For example, to check for null dereferences in the Android app `app.apk`, you should run `./hopper.sh -check_android_derefs -jumping_execution -control_feasibility -app app.apk`. 
+where `<path_to_bytecodes>` is a path to a JAR or directory containing the Java bytecodes to be checked and `<path_to_file_containing_sensitive_method>` is a file containing the desired sensitive method. An example of this is running `./hopper.sh testExamples/Unit1.1/ testExamples/SenUnit1` which will attempt to find the path to SenUnit1 in the Unit1.1 example.
 
 Tests
 -----
-To compile/run the regression tests, do `sbt test:compile` and then `./hopper.sh -regressions -jumping_execution`. To run a single test, you can do `./hopper.sh -regressions -test <test_name>`.
+A number of unit tests can be found in `./testExamples` along the file containing the sensitive method.
 
 About
 -----
 The core functionality of Hopper is an engine for *refuting* queries written in separation logic; that is, showing that no concrete execution can satisfy the query. Hopper performs a form of proof by contradiction: it starts from a query representing a bad program state (such as a null dereference or out-of-bounds array access) and works backward in an attempt to derive **false**. 
 
 Hopper has several built-in clients (as described above) but writing your own clients is meant to be easy: just extend the `Client` class and write a checker that takes a program as input and emits separation logic formulae representing your client.
+
+This extension of hopper allows for framework relevance slicing of programs.
 
 For more on Hopper and its predecessor tool Thresher, see our OOPSLA '15 [paper](http://www.cs.colorado.edu/~bec/papers/controlfeasibility-oopsla15.pdf), our PLDI '13 [paper](http://www.cs.colorado.edu/~bec/papers/thresher-pldi13.pdf) or the Thresher [project page](http://pl.cs.colorado.edu/projects/thresher/).
 
