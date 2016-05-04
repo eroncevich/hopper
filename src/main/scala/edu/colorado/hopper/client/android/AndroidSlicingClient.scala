@@ -49,7 +49,7 @@ class AndroidSlicingClient(appPath: String, sensitiveMethod: String, androidLib:
 
       override def returnFromCall(p: Path): Iterable[Path] = {
         println("retrnFromCall")
-        if (p.qry.node.getMethod.toString == "< Application, Lcom/plv/evan/sensitiveunit1/unit$1, onClick(Landroid/view/View;)V >") {
+        if (p.qry.node.getMethod.getSelector.getName.toString == "onClick") {
           val qry = p.qry
           val caller = getCallers(walaRes.cg, qry.node).head
           println(caller)

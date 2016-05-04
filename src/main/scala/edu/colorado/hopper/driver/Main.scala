@@ -8,13 +8,15 @@ import edu.colorado.hopper.client.bounds.{ArrayBoundsClient, ArrayBoundsClientTe
 import edu.colorado.walautil.Util
 import edu.colorado.thresher.core.Options
 
+import scala.io.Source
+
 object Main {
   
   val REGRESSION = "__regression"
     
   def main(args: Array[String]) : Unit = {
     val newArgs = Array("-check_android_derefs", "-app", args(0))
-    val sensitiveMethod = if(args.length==2) args(1) else "Lcom/plv/evan/sensitiveunit1/unit.sensitiveMethod()"
+    val sensitiveMethod = if(args.length<2) throw new IllegalArgumentException else Source.fromFile(args(1)).getLines.next
     Options.DEBUG = true
     val target = Options.parseArgs(newArgs)
     

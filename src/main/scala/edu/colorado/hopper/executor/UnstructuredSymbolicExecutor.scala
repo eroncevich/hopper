@@ -188,17 +188,13 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
         for (a <- args) {
           for( p<- paths){
             p.qry.addDepEdge(caller,a, callee)
-            //instr.getDeclaredTarget.
-            //p.qry.addDepEdge(a,Variable())
-            //val callees = cg.getPossibleTargets(node, instr.getCallSite())
           }
         }
         for(p <- paths){
           val callNode = cg.getNodes(instr.getDeclaredTarget).head
-          for(ii <- {1 to instr.getNumberOfParameters-1}){
-            p.qry.addDepEdge(Variable(instr.getUse(ii),node),Variable(ii,callNode),FrameworkFun("argument",null))
+          for(ii <- {0 to instr.getNumberOfParameters-1}){
+            p.qry.addDepEdge(Variable(instr.getUse(ii),node),Variable(ii+1,callNode),FrameworkFun("argument",null))
           }
-          //println("Hey"+cg.getNodes(instr.getDeclaredTarget))
         }
       }
       val (enterPaths, skipPaths) = enterCallee(paths, instr)
