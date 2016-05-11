@@ -344,7 +344,6 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
       }
 
       }}
-      println("newP: "+p)
       if (DEBUG) println(s"Before control-feas filtering, ${modMap.keys} are relevant")
       val (nodesToJumpToMustAlias, nodesToJumpToMustNotAlias) = controlFeasibilityFilter(modMap, qry.node)
 
@@ -384,7 +383,7 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
       val mustAliasCases = setUpJumpPaths(nodesToJumpToMustAlias, mustAlias = true)
       val jumpPaths = setUpJumpPaths(nodesToJumpToMustNotAlias, mustAlias = false, mustAliasCases)
       //for(p<-jumpPaths){println(p.qry.node.getIR)}
-      for(p<-jumpPaths){p.qry.getSlice(modMap(p.qry.node))}
+      //for(p<-jumpPaths){p.qry.getSlice(modMap(p.qry.node))}
       //val jumpDepPaths = jumpPaths.map{p=>Path()}
       Some(jumpPaths)
     }

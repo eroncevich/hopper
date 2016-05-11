@@ -38,88 +38,21 @@ class AndroidSlicingClient(appPath: String, sensitiveMethod: String, androidLib:
                        
     Options.JUMPING_EXECUTION = true
     Options.CONTROL_FEASIBILITY = true
-    val one = 1
     val DROIDEL_HOME = "../droidel" // point this at your droidel install
     val DEBUG = true
 
   def makeExec() = {
     val rr = new AndroidRelevanceRelation(appTransformer, walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
     val tf = new JumpingTransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha, rr)
-    new AndroidJumpingSymbolicExecutor(tf, rr) {
-
-      override def returnFromCall(p: Path): Iterable[Path] = {
-        println("retrnFromCall")
-        if (p.qry.node.getMethod.getSelector.getName.toString == "onClick") {
-          val qry = p.qry
-          val caller = getCallers(walaRes.cg, qry.node).head
-          println(caller)
-          val instrs = caller.getIR.getInstructions.filter { i => i match {
-            case ii: SSAInvokeInstruction => cg.getPossibleTargets(caller, ii.getCallSite()).contains(qry.node)
-            case _ => false
-          }
-          }
-          val heapInstrs = caller.getIR.getInstructions.find { i => i match {
-            case ii: SSAGetInstruction => i.iindex == 17
-            case _ => false
-          }
-          }
-          val heapInstr = heapInstrs match {
-            case Some(i: SSAGetInstruction) => i
-            case _ => throw new ClassCastException
-          }
-
-          val instr = instrs.head match {
-            case i: SSAInvokeInstruction => i
-            case _ => throw new ClassCastException
-          }
-          println(instr)
-          val invokeUse = instr.getDef
-          val receiver = Var.makeLPK(1, qry.node, walaRes.hm)
-          val iFld = cha.resolveField(heapInstr.getDeclaredField)
-          //println("f "+iFld)
-          //val heapSrc = Var.makeLPk(heapInstr.getDef(), caller, walaRes.hm)
-          //ObjVar()//setInstanceKey
-          //println(PtUtil.getPt(Var.makeLPK(heapInstr.getRef,caller,walaRes.hm),walaRes.hg))
-          val instKeys = PtUtil.getPt(Var.makeLPK(heapInstr.getRef, caller, walaRes.hm), walaRes.hg)
-
-          //PtEdge.make(null:HeapVar,iFld,ObjVar(PtUtil.getPt(receiver, walaRes.hg)))
-          val hConstraint = PtEdge.make(ObjVar(instKeys), iFld, ObjVar(PtUtil.getPt(receiver, walaRes.hg)))
-          qry.addHeapConstraint(hConstraint)
-          //println(hConstraint)
-          //println(p)
-          return doJump(p)
-
-        }/*if(isEntrypointCallback(p.node,walaRes.cg)){
-          if(p.getBackup){
-            ???
-          }else{
-            super.returnFromCallNoJump(p)
-          }
-        }*/else{
-          return super.returnFromCallNoJump(p)
-        }
-      }
-    }
+    new AndroidSlicingExecutor(tf,rr,walaRes.hm,walaRes.hg)
   }
 
 
     override def check : (Int, Int) = {
-        import walaRes._       
-
-        val exec = {
-          val rr = new AndroidRelevanceRelation(appTransformer, walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
-          //val rr = new RelevanceRelation(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
-          val tf = new JumpingTransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha, rr)
-          //val tf = new TransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
-          //val tf = makeTF(rr)
-          //new AndroidJumpingSymbolicExecutor(tf,rr)
-          //new DefaultJumpingSymbolicExecutor(tf,rr)
-          makeExec()
-        }
-
+        import walaRes._
+        val exec = makeExec
         
-        println("TRANSFER")
-
+        println("Looking for Invocation")
 
         val invokeInst =
       walaRes.cg.foldLeft (List.empty[(Int,CGNode)]) ((l, n) => // for each node n in the call graph
@@ -141,7 +74,7 @@ class AndroidSlicingClient(appPath: String, sensitiveMethod: String, androidLib:
                   }
                   }
                   val funStr = i.getDeclaredTarget.getDeclaringClass.getName.toString +"." +
-                    i.getDeclaredTarget.getSelector.getName.toString + "(" + args + ")"
+                    i.getDeclaredTarget.getSelector.getName.toString// + "(" + args + ")"
                   //println(sensitiveMethod == funStr)
                   //if(i.getCallSite.getDeclaredTarget.toString == "< Application, Lcom/plv/evan/sensitiveunit1/unit, sensitiveMethod()V >"){
                   if(sensitiveMethod==funStr){
@@ -194,8 +127,8 @@ class AndroidSlicingClient(appPath: String, sensitiveMethod: String, androidLib:
         if (Options.MAIN_METHOD == "main") true else n.getMethod.getName.toString == Options.MAIN_METHOD
       checkClass && checkMethod && !ClassUtil.isLibrary(n)
     }
-    
-    
+
+
     
 
     

@@ -10,13 +10,16 @@ import com.ibm.wala.shrikeBT.IConditionalBranchInstruction.Operator.EQ
 import com.ibm.wala.ssa._
 import com.ibm.wala.types.{ClassLoaderReference, TypeReference}
 import com.ibm.wala.util.graph.dominators.Dominators
+import com.ibm.wala.util.graph.traverse.BFSIterator
 import com.twitter.util.LruMap
+import edu.colorado.droidel.constants.DroidelConstants
 import edu.colorado.hopper.executor.UnstructuredSymbolicExecutor._
 import edu.colorado.hopper.state._
 import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.Types.WalaBlock
 import edu.colorado.walautil._
 
+import scala.collection.JavaConversions._
 import scala.collection.JavaConversions.{asScalaBuffer, asScalaIterator, asScalaSet, collectionAsScalaIterable, mapAsJavaMap}
 import scala.io.Source
 
@@ -163,40 +166,11 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
     }
   }
 
-  val frameworkSet:collection.immutable.Set[String] = {
-      Source.fromFile("frameworkO").getLines.foldLeft(collection.immutable.Set[String]()) {(a,l) =>a + l}
-  }
-  val isFwkRelevant : SSAInvokeInstruction => Boolean = instr =>{
-     val funStr = instr.getDeclaredTarget.getDeclaringClass.getName.toString
-    println(funStr)
 
-    frameworkSet.contains(funStr)
-  }
 
   def executeInstr(paths : List[Path], instr : SSAInstruction, blk : ISSABasicBlock, node : CGNode, cfg : SSACFG,
                    isLoopBlk : Boolean, callStackSize : Int) : List[Path] = instr match {
     case instr : SSAInvokeInstruction =>
-      println("Is Relevant: " + isFwkRelevant(instr))
-      if(isFwkRelevant(instr)) {
-        val caller = Variable(instr.getReceiver, node)
-        val args = {1 to instr.getNumberOfParameters-1}.map{ii => Variable(instr.getUse(ii),node)}
-
-        val caller_loc = node.getMethod.getSourcePosition(instr.iindex)
-        val callee = FrameworkFun(instr.getDeclaredTarget.toString, caller_loc) // (callee * caller_location)
-
-        // add dep edge from current method context to callee
-        for (a <- args) {
-          for( p<- paths){
-            p.qry.addDepEdge(caller,a, callee)
-          }
-        }
-        for(p <- paths){
-          val callNode = cg.getNodes(instr.getDeclaredTarget).head
-          for(ii <- {0 to instr.getNumberOfParameters-1}){
-            p.qry.addDepEdge(Variable(instr.getUse(ii),node),Variable(ii+1,callNode),FrameworkFun("argument",null))
-          }
-        }
-      }
       val (enterPaths, skipPaths) = enterCallee(paths, instr)
       if (!enterPaths.isEmpty) {
         if (MIN_DEBUG)
@@ -312,12 +286,47 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
         if (MIN_DEBUG) println(s"Context-free return; branching from ${ClassUtil.pretty(callee)} to ${callers.size} callers.")
         val newPaths = callers.foldLeft (List.empty[Path]) ((lst, caller) => {
           val callerPath = p.deepCopy
-          // create a path for each caller and call site of the current method
-          if (caller.getMethod.getSelector.getName.toString == "performCreate") {
-            println("Reached the beginning of the Activity, purposely returning")
-            //p.clearCallStack()
-            throw WitnessFoundException
+
+          def isFrameworkOrStubNode(n : CGNode) : Boolean =
+            ClassUtil.isLibrary(n) || {
+              val methodName = n.getMethod.getDeclaringClass.getName.toString
+              methodName.startsWith(s"L${DroidelConstants.STUB_DIR}") ||
+                methodName.startsWith(s"L${DroidelConstants.HARNESS_DIR}") ||
+                methodName.startsWith(s"L${DroidelConstants.PREWRITTEN_STUB_DIR}")
+            }
+
+          val iter = new BFSIterator[CGNode](cg, caller) {
+            override def getConnected(n: CGNode): java.util.Iterator[_ <: CGNode] = {
+              //println("con"+ n)
+              //println("Step Top")
+              val possiblePreds = cg.getPredNodes(n).filter(n => isFrameworkOrStubNode(n) && {
+                connectedHelper(n,3).isEmpty
+              })
+              val preds = cg.getPredNodes(n).filter(n =>  !isFrameworkOrStubNode(n))
+              preds++possiblePreds
+            }
+            def connectedHelper(n: CGNode, steps:Int):Set[CGNode] = {
+              if(steps==0) return Set()
+              //println("step "+steps)
+              val possiblePreds = cg.getPredNodes(n).filter(n => isFrameworkOrStubNode(n) && {
+                connectedHelper(n,steps-1).isEmpty
+              })
+              //val possPreds = pred.foldLeft(Set():Set[CGNode]){(a,n) => a ++ (connectedHelper(n,steps-1))}
+              val preds = cg.getPredNodes(n).filter(n => !isFrameworkOrStubNode(n))
+              preds.toSet ++ possiblePreds.toSet
+            }
           }
+
+          //val initNodes = if (!isFrameworkOrStubNode(caller)) Set(caller) else Set.empty[CGNode]
+
+          val validNodes = GraphUtil.bfsIterFold(iter, Set.empty[CGNode], ((s: Set[CGNode], n: CGNode) =>
+            s+n
+            )).filter(n => (n!=caller) || !isFrameworkOrStubNode(n))
+          println("care: "+ validNodes)
+          if(validNodes.isEmpty){
+            lst
+          }else{
+          // create a path for each caller and call site of the current method
           if (MIN_DEBUG) println("caller: " + ClassUtil.pretty(caller))
           if (callerInvMap.pathEntailsInv((caller, callee), callerPath)) {
             if (Options.PRINT_REFS) println("Refuted by caller summary.")
@@ -357,7 +366,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
               }
             })
           }
-        })
+        }})
         newPaths
       }
     } else // else callStack.size > 1, "normal" return from callee to caller      
