@@ -42,7 +42,7 @@ class AndroidSlicingClient(appPath: String, sensitiveMethod: String, androidLib:
     val DEBUG = true
 
   def makeExec() = {
-    val rr = new AndroidRelevanceRelation(appTransformer, walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
+    val rr = new AndroidSlicingRelevanceRelation(appTransformer, walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha)
     val tf = new JumpingTransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha, rr)
     new AndroidSlicingExecutor(tf,rr,walaRes.hm,walaRes.hg)
   }
