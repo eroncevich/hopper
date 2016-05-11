@@ -39,7 +39,6 @@ trait JumpingSymbolicExecutor extends UnstructuredSymbolicExecutor {
   override def forkToPredecessorBlocks(instrPaths : List[Path], startBlk : ISSABasicBlock, loopHeader : Option[ISSABasicBlock],
                                        ir : IR, passPaths : List[Path], failPaths : List[Path], test : Path => Boolean) =
    // disallowing nested jumps for now
-    //Todo modify here
    if (instrPaths.forall(p => hasUnproduceableConstraint(p) || (!p.isInJump && piecewiseJumpRefuted(p))))
      (passPaths, failPaths)
    else
